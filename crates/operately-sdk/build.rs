@@ -160,7 +160,15 @@ fn resolve_named(name: &str, names: &TypeNames) -> String {
     if names.primitives.contains_key(name) {
         return match name {
             "id" | "company_id" => "Id".to_string(),
-            "json" => "OJson".to_string(),
+            // Confirmed against a real response (GET /projects/list): the "json" scalar is NOT
+            // consistently one shape. `description` really is a JSON-encoded string (a TipTap
+            // document serialized to text); `tasks_kanban_state` is sent as a genuine nested
+            // object, not a string at all. `serde_json::Value` is the only representation that
+            // decodes both without guessing which one a given field happens to be - a
+            // `Value::String` for the former, `Value::Object` for the latter. `OJson` (a type
+            // alias to `String`) is kept only because some already-written input code may
+            // reference it; it is no longer used by this generator.
+            "json" => "serde_json::Value".to_string(),
             _ => "String".to_string(),
         };
     }
@@ -169,7 +177,14 @@ fn resolve_named(name: &str, names: &TypeNames) -> String {
         "boolean" => return "bool".to_string(),
         "integer" => return "i64".to_string(),
         "float" => return "f64".to_string(),
-        "date" | "datetime" | "contextual_date" | "timeframe" => return "String".to_string(),
+        "date" | "datetime" => return "String".to_string(),
+        // Confirmed against a real response (GET /projects/list): `timeframe` is
+        // `{contextual_start_date: {value, date, date_type}, contextual_end_date: {...}, ...}`,
+        // and `contextual_date` is that nested `{value, date, date_type}` shape itself — neither
+        // is a plain string despite the catalog naming them alongside "date"/"datetime". Not in
+        // the catalog's own `types.objects` map either, so there's no declared field list to
+        // generate a real struct from — raw JSON, same reasoning as the union types above.
+        "contextual_date" | "timeframe" => return "serde_json::Value".to_string(),
         _ => {}
     }
     if names.enums.contains_key(name) {
@@ -262,6 +277,15 @@ fn emit_string_enum(out: &mut String, name: &str, variants: &[Value]) {
         }
         writeln!(out, "    {},", pascal(v)).unwrap();
     }
+    // The catalog only lists variants that were known when it was generated. A live
+    // deployment has sent at least one value outside that set for a real field
+    // (Operately's own "not yet decided" success/goal-outcome state serializes as
+    // the literal string "nil", not JSON null, on at least one endpoint) - without
+    // this, that one unrecognized string fails the ENTIRE response's decode, not
+    // just this field. `#[serde(other)]` can't carry the original string (serde's
+    // own limitation for C-like string enums), so it's dropped - an acceptable
+    // trade-off for "unknown/unset", never for a value the caller needed to act on.
+    out.push_str("    #[serde(other)]\n    Unrecognized,\n");
     out.push_str("}\n\n");
 }
 
