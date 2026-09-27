@@ -262,6 +262,15 @@ fn emit_string_enum(out: &mut String, name: &str, variants: &[Value]) {
         }
         writeln!(out, "    {},", pascal(v)).unwrap();
     }
+    // The catalog only lists variants that were known when it was generated. A live
+    // deployment has sent at least one value outside that set for a real field
+    // (Operately's own "not yet decided" success/goal-outcome state serializes as
+    // the literal string "nil", not JSON null, on at least one endpoint) - without
+    // this, that one unrecognized string fails the ENTIRE response's decode, not
+    // just this field. `#[serde(other)]` can't carry the original string (serde's
+    // own limitation for C-like string enums), so it's dropped - an acceptable
+    // trade-off for "unknown/unset", never for a value the caller needed to act on.
+    out.push_str("    #[serde(other)]\n    Unrecognized,\n");
     out.push_str("}\n\n");
 }
 
