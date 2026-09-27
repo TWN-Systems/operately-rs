@@ -16,8 +16,8 @@
 //! (`activity_content`, `update_content`, etc.) are deliberately left as raw `serde_json::Value`
 //! rather than modeled as tagged enums — see `build.rs`'s comment at the union-emission site.
 
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::Value;
 
 #[allow(dead_code, clippy::all)]
@@ -59,12 +59,7 @@ impl OperatelyClient {
     /// against `cli/src/core/http.ts`'s `callEndpoint`: `axios.post(url, options.inputs, ...)`).
     pub(crate) async fn mutation<In: Serialize, Out: DeserializeOwned>(&self, path: &str, input: &In) -> Result<Out> {
         let url = format!("{}{path}", self.base_url);
-        let resp = self.http
-            .post(&url)
-            .bearer_auth(&self.token)
-            .json(input)
-            .send()
-            .await?;
+        let resp = self.http.post(&url).bearer_auth(&self.token).json(input).send().await?;
         Self::decode(resp).await
     }
 
@@ -76,12 +71,7 @@ impl OperatelyClient {
         let url = format!("{}{path}", self.base_url);
         let value = serde_json::to_value(input)?;
         let pairs = flatten_query(&value);
-        let resp = self.http
-            .get(&url)
-            .bearer_auth(&self.token)
-            .query(&pairs)
-            .send()
-            .await?;
+        let resp = self.http.get(&url).bearer_auth(&self.token).query(&pairs).send().await?;
         Self::decode(resp).await
     }
 

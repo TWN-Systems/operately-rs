@@ -28,7 +28,8 @@ fn main() {
     let objects = types["objects"].as_object().cloned().unwrap_or_default();
     let unions = types["unions"].as_object().cloned().unwrap_or_default();
 
-    let names = TypeNames { primitives: &primitives, enums: &enums, int_enums: &int_enums, objects: &objects, unions: &unions };
+    let names =
+        TypeNames { primitives: &primitives, enums: &enums, int_enums: &int_enums, objects: &objects, unions: &unions };
 
     // Scalars that are not in the catalog's own `types` section at all — built into the
     // wire format itself, per docs/api.md's type list and confirmed against real field usage.
@@ -118,20 +119,26 @@ struct TypeNames<'a> {
 }
 
 fn pascal(snake: &str) -> String {
-    snake.split(['_', '-']).map(|w| {
-        let mut c = w.chars();
-        match c.next() {
-            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-            None => String::new(),
-        }
-    }).collect()
+    snake
+        .split(['_', '-'])
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Rust field/variant identifiers can't be a handful of reserved words without the raw-ident
 /// `r#` prefix. serde derive round-trips `r#type` as the wire name `"type"` automatically, so no
 /// explicit `#[serde(rename = ...)]` is needed for this case specifically.
 fn ident(snake: &str) -> String {
-    const RESERVED: &[&str] = &["type", "move", "match", "mod", "fn", "let", "ref", "use", "loop", "if", "else", "for", "while", "box", "dyn", "self", "super", "in"];
+    const RESERVED: &[&str] = &[
+        "type", "move", "match", "mod", "fn", "let", "ref", "use", "loop", "if", "else", "for", "while", "box", "dyn",
+        "self", "super", "in",
+    ];
     if RESERVED.contains(&snake) {
         format!("r#{snake}")
     } else {
@@ -165,10 +172,18 @@ fn resolve_named(name: &str, names: &TypeNames) -> String {
         "date" | "datetime" | "contextual_date" | "timeframe" => return "String".to_string(),
         _ => {}
     }
-    if names.enums.contains_key(name) { return pascal(name); }
-    if names.int_enums.contains_key(name) { return pascal(name); }
-    if names.objects.contains_key(name) { return pascal(name); }
-    if names.unions.contains_key(name) { return pascal(name); }
+    if names.enums.contains_key(name) {
+        return pascal(name);
+    }
+    if names.int_enums.contains_key(name) {
+        return pascal(name);
+    }
+    if names.objects.contains_key(name) {
+        return pascal(name);
+    }
+    if names.unions.contains_key(name) {
+        return pascal(name);
+    }
     // Unknown to the catalog's own type sections (e.g. a task_status/task_type-style dynamic,
     // per-company string that isn't in the fixed `enums` list because it has no fixed variant
     // set) — modeled as a plain String rather than guessing a variant list.
@@ -194,11 +209,8 @@ fn field_type(field: &Value, names: &TypeNames) -> String {
     let ty = &field["type"];
     let is_list = ty["kind"].as_str() == Some("list");
     let inner = resolve_type(ty, names);
-    let boxed_inner = if !is_list && names.objects.contains_key(bare_catalog_name(ty)) {
-        format!("Box<{inner}>")
-    } else {
-        inner
-    };
+    let boxed_inner =
+        if !is_list && names.objects.contains_key(bare_catalog_name(ty)) { format!("Box<{inner}>") } else { inner };
     format!("Option<{boxed_inner}>")
 }
 
@@ -215,8 +227,12 @@ fn emit_struct(out: &mut String, name: &str, fields: &[Value], names: &TypeNames
     let mut seen = BTreeSet::new();
     for f in fields {
         let fname = f["name"].as_str().expect("field has a name");
-        if fname == "__typename" { continue; } // GraphQL-era artifact carried into the catalog, not a real field
-        if !seen.insert(fname.to_string()) { continue; } // some object defs repeat a field twice
+        if fname == "__typename" {
+            continue;
+        } // GraphQL-era artifact carried into the catalog, not a real field
+        if !seen.insert(fname.to_string()) {
+            continue;
+        } // some object defs repeat a field twice
         let ty = field_type(f, names);
         let is_opt = ty.starts_with("Option<");
         if is_opt {
@@ -280,7 +296,8 @@ fn emit_endpoint(out: &mut String, ns: &str, ep: &Value, _names: &TypeNames) {
         }
     }
     writeln!(out, "    /// `{method} {path}`").unwrap();
-    writeln!(out, "    pub async fn {fn_name}(&self, input: &{input_name}) -> crate::Result<{output_name}> {{").unwrap();
+    writeln!(out, "    pub async fn {fn_name}(&self, input: &{input_name}) -> crate::Result<{output_name}> {{")
+        .unwrap();
     if method == "GET" {
         writeln!(out, "        self.query(\"{path}\", input).await").unwrap();
     } else {
