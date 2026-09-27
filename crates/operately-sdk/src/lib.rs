@@ -26,12 +26,33 @@ mod generated {
 }
 pub use generated::*;
 
+/// The real TurboConnect error-response shape (`app/lib/turbo_connect/plugs/dispatch.ex`):
+/// `{"error": "<category>", "message": "<text>"}`, with `details` present only on some
+/// `bad_request` responses. `error` is a fixed category string ("Bad request", "Unauthorized",
+/// "Forbidden", "Not found", "Internal server error") but modeled as `String`, not an enum —
+/// an upstream proxy (502/504) or a crash before this plug runs can return a body this shape
+/// doesn't cover at all, which is why `Error::Api` below falls back to the raw string rather
+/// than requiring this to parse.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ApiErrorBody {
+    pub error: String,
+    pub message: String,
+    #[serde(default)]
+    pub details: Option<Value>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("http transport error: {0}")]
     Transport(#[from] reqwest::Error),
+    /// A structured TurboConnect error response.
+    #[error("operately api error, status {status}: {} — {}", body.error, body.message)]
+    Api { status: u16, body: ApiErrorBody },
+    /// A non-2xx response whose body didn't parse as `ApiErrorBody` — e.g. the auth plug's
+    /// plain-text `"Unauthorized"` (`require_api_token.ex` sends `send_resp(conn, 401,
+    /// "Unauthorized")`, not JSON) or a proxy error page.
     #[error("operately api error, status {status}: {body}")]
-    Api { status: u16, body: String },
+    ApiRaw { status: u16, body: String },
     #[error("failed to decode response: {0}")]
     Decode(#[from] serde_json::Error),
 }
@@ -79,7 +100,10 @@ impl OperatelyClient {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(Error::Api { status: status.as_u16(), body });
+            return Err(match serde_json::from_str::<ApiErrorBody>(&body) {
+                Ok(parsed) => Error::Api { status: status.as_u16(), body: parsed },
+                Err(_) => Error::ApiRaw { status: status.as_u16(), body },
+            });
         }
         Ok(serde_json::from_str(&body)?)
     }
