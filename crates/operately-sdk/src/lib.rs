@@ -138,3 +138,56 @@ fn push_query_value(pairs: &mut Vec<(String, String)>, key: &str, value: &Value)
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn flatten_query_skips_null_fields() {
+        let pairs = flatten_query(&json!({"id": "abc", "milestone_id": null}));
+        assert_eq!(pairs, vec![("id".to_string(), "abc".to_string())]);
+    }
+
+    #[test]
+    fn flatten_query_encodes_scalars() {
+        let pairs = flatten_query(&json!({"name": "hi", "done": true, "count": 3}));
+        assert!(pairs.contains(&("name".to_string(), "hi".to_string())));
+        assert!(pairs.contains(&("done".to_string(), "true".to_string())));
+        assert!(pairs.contains(&("count".to_string(), "3".to_string())));
+        assert_eq!(pairs.len(), 3);
+    }
+
+    #[test]
+    fn flatten_query_encodes_arrays_as_bracket_key() {
+        let pairs = flatten_query(&json!({"ids": ["a", "b", "c"]}));
+        assert_eq!(
+            pairs,
+            vec![
+                ("ids[]".to_string(), "a".to_string()),
+                ("ids[]".to_string(), "b".to_string()),
+                ("ids[]".to_string(), "c".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn flatten_query_array_skips_null_elements() {
+        let pairs = flatten_query(&json!({"ids": ["a", null, "b"]}));
+        assert_eq!(pairs, vec![("ids[]".to_string(), "a".to_string()), ("ids[]".to_string(), "b".to_string())]);
+    }
+
+    #[test]
+    fn flatten_query_non_object_top_level_is_empty() {
+        assert_eq!(flatten_query(&json!("just a string")), Vec::new());
+        assert_eq!(flatten_query(&json!(null)), Vec::new());
+    }
+
+    #[test]
+    #[cfg_attr(not(debug_assertions), ignore = "debug_assert! only fires in debug builds")]
+    #[should_panic(expected = "flatten_query needs an object convention decided first")]
+    fn flatten_query_panics_on_nested_object() {
+        flatten_query(&json!({"filter": {"status": "open"}}));
+    }
+}
