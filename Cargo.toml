@@ -5,7 +5,10 @@ members = ["crates/operately-sdk"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.81" # MSRV — kept in step with rust-toolchain.toml's floor
+# Not a preference: the transitive `icu_*` crates (pulled in by reqwest via
+# idna) declare `rust-version = 1.88`. Lower this only with a measured
+# resolution that actually builds on the lower toolchain.
+rust-version = "1.88"
 license = "MIT"
 authors = ["TWN Systems"]
 repository = "https://github.com/TWN-Systems/operately-rs"

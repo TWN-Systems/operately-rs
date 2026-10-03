@@ -31,7 +31,7 @@ CARETAKER_GITHUB_TOKEN=… caretakerctl ossf apply \
 
 | Workflow | Trigger | Owns |
 |---|---|---|
-| `ci.yml` | every PR, push to `master` | `Rust checks` (fmt/build/test/clippy/doc), MSRV 1.81, generator determinism, Semgrep |
+| `ci.yml` | every PR, push to `master` | `Rust checks` (fmt/build/test/clippy/doc), MSRV 1.88, generator determinism, Semgrep |
 | `supply-chain.yml` | PR, push, daily 06:13 UTC | `cargo audit --deny warnings`, `cargo deny check`, CycloneDX SBOM |
 | `codeql.yml` | PR, push, Wednesdays 02:23 UTC | CodeQL `security-extended` for Rust |
 | `fuzz.yml` | PR, push, daily 05:17 UTC | `cargo-fuzz` — PR runs 180 s per target, nightly goes deeper |
@@ -87,11 +87,19 @@ one, add it as a *separate scheduled* job so the PR gate stays deterministic.
 
 1. **Branch protection is not on.** Until the repo is public, nothing forces
    these workflows to pass before merge.
-2. **`Cargo.lock` was untracked.** It is tracked now — CI uses `--locked`, and an
-   untracked lockfile made every `--locked` invocation a coin flip.
-3. **`cargo-semver-checks` has no baseline** until 0.1.0 is on crates.io. The
+2. **MSRV is 1.88, not lower.** The floor is set by transitive dependencies,
+   not by this crate: `icu_collections`/`icu_normalizer`/`icu_locale_core`
+   declare `rust-version = 1.88` (reqwest → idna → url → idna_adapter), and
+   `cpufeatures 0.3.1` needs `edition2024` in its manifest, which cargo 1.85
+   cannot parse at all. An earlier draft of this branch claimed 1.81; the MSRV
+   job failed in 4 seconds and the claim was wrong. If a lower floor is wanted
+   it needs a dependency change (vendoring or downgrading the idna chain), not
+   an edit to `rust-version`.
+3. **`Cargo.lock` was untracked.** It is tracked now — CI uses `--locked`, and
+   an untracked lockfile made every `--locked` invocation a coin flip.
+4. **`cargo-semver-checks` has no baseline** until 0.1.0 is on crates.io. The
    workflow reports "skipped" rather than passing silently.
-4. **`deny.toml` allows `multiple-versions = "warn"`.** Deliberate for now; flip
+5. **`deny.toml` allows `multiple-versions = "warn"`.** Deliberate for now; flip
    to `deny` once the duplicate set is empty and pin the exceptions by hand.
 5. **`OperatelyClient::decode` reads the response body unbounded**
    (`resp.text()` at `crates/operately-sdk/src/lib.rs:101`). Semgrep rule

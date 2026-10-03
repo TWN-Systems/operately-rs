@@ -1,6 +1,6 @@
 # Toolchain floor for CI and local development.
 #
-# MSRV is 1.81 (see `workspace.package.rust-version`); CI additionally tests
+# MSRV is 1.88 (see `workspace.package.rust-version`); CI additionally tests
 # the pinned stable channel. `cargo fmt`/`clippy` components are declared so
 # `cargo fmt`/`cargo clippy` work from a bare `rustup` install.
 [toolchain]

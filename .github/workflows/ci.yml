@@ -40,18 +40,18 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   msrv:
-    name: MSRV 1.81
+    name: MSRV 1.88
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           persist-credentials: false
       - name: Install MSRV toolchain
-        run: rustup toolchain install 1.81 --profile minimal
+        run: rustup toolchain install 1.88 --profile minimal
       - name: Build on MSRV
-        run: cargo +1.81 build --locked --all-targets
+        run: cargo +1.88 build --locked --all-targets
       - name: Test on MSRV
-        run: cargo +1.81 test --locked
+        run: cargo +1.88 test --locked
 
   # The build.rs code generator is the one piece of this crate that reads a
   # vendored third-party artifact (Operately's api-catalog.json). A panic or a
@@ -68,13 +68,16 @@ jobs:
       - name: Generate from the vendored catalog
         run: |
           set -euo pipefail
-          first=$(find "${CARGO_TARGET_DIR:-target}" -name generated.rs -path '*operately-sdk*' -print -quit)
-          test -n "$first"
-          sha_a=$(sha256sum "$first" | cut -d' ' -f1)
+          hash_generated() {
+            find "${CARGO_TARGET_DIR:-target}" -name generated.rs -path '*operately-sdk*' -print -quit \
+              | xargs -r sha256sum | cut -d' ' -f1
+          }
+          cargo build --locked -p operately-sdk
+          sha_a=$(hash_generated)
+          test -n "$sha_a"
           cargo clean -p operately-sdk
           cargo build --locked -p operately-sdk
-          second=$(find "${CARGO_TARGET_DIR:-target}" -name generated.rs -path '*operately-sdk*' -print -quit)
-          sha_b=$(sha256sum "$second" | cut -d' ' -f1)
+          sha_b=$(hash_generated)
           echo "run 1: $sha_a"
           echo "run 2: $sha_b"
           test "$sha_a" = "$sha_b"

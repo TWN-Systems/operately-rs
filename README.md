@@ -98,7 +98,13 @@ let tasks = client.tasks_list(&TasksListInput {
 operately-sdk = "0.1"
 ```
 
-MSRV is **1.81**. TLS is `rustls` — no OpenSSL, no system C library.
+MSRV is **1.88**. TLS is `rustls` — no OpenSSL, no system C library.
+
+The MSRV floor is not a preference: the transitive `icu_*` crates that
+`reqwest` pulls in through `idna` declare `rust-version = 1.88`. On 1.85 cargo
+refuses to even parse `cpufeatures`' manifest (`edition2024` required), and on
+1.88 `cargo build --locked --all-targets` and `cargo test --locked` both pass.
+`ci.yml`'s `MSRV 1.88` job is what keeps the claim honest.
 
 ## License
 
