@@ -1,0 +1,66 @@
+name: Supply chain
+
+# RustSec advisories, cargo-deny policy, and an SBOM per push. These are the
+# supply-chain half of the OpenSSF story; `ci.yml` owns correctness.
+
+on:
+  pull_request:
+    paths:
+      - "**/*.toml"
+      - "**/*.lock"
+      - "crates/**"
+      - ".github/workflows/supply-chain.yml"
+  push:
+    branches: [master]
+  schedule:
+    - cron: "13 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: RustSec audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit --version 0.22.0
+      - name: Audit
+        run: cargo audit --deny warnings
+
+  deny:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny --version 0.19.4
+      - name: Check dependency policy
+        run: cargo deny check advisories bans licenses sources
+
+  sbom:
+    name: CycloneDX SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Install cargo-cyclonedx
+        run: cargo install --locked cargo-cyclonedx --version 0.5.7
+      - name: Generate SBOM
+        run: cargo cyclonedx --format json --all-features --override-filename operately-sdk.sbom.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: operately-sdk-cyclonedx-sbom
+          path: operately-sdk.sbom.json
+          retention-days: 90

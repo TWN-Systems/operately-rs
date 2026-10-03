@@ -3,6 +3,15 @@
 A **Rust SDK for [Operately](https://github.com/operately/operately)'s external API**
 (`/api/external/v1`) — point it at any Operately deployment, self-hosted or cloud.
 
+[![CI](https://github.com/TWN-Systems/operately-rs/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/TWN-Systems/operately-rs/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/operately-sdk.svg)](https://crates.io/crates/operately-sdk)
+[![docs.rs](https://img.shields.io/docsrs/operately-sdk.svg)](https://docs.rs/operately-sdk)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/TWN-Systems/operately-rs/badge)](https://scorecard.dev/viewer/?uri=github.com/TWN-Systems/operately-rs)
+
+> **Not yet published to crates.io.** The first release is cut by
+> [release-plz](release-plz.toml) once `master` is green. Until then, depend on
+> the git tag.
+
 > **Disclaimer:** operately-rs is an independent project and is **not affiliated with,
 > endorsed by, or supported by the Operately project**. "Operately" is the name of the
 > upstream open-source product this SDK talks to. Unlike a clean-room reverse-engineering
@@ -82,6 +91,29 @@ let tasks = client.tasks_list(&TasksListInput {
    catalog can produce (a hyphenated enum variant, a multi-line docstring, self- and
    indirect-referential object cycles) — expect more of the same class, not novel ones.
 
+## Install
+
+```toml
+[dependencies]
+operately-sdk = "0.1"
+```
+
+MSRV is **1.88**. TLS is `rustls` — no OpenSSL, no system C library.
+
+The MSRV floor is not a preference: the transitive `icu_*` crates that
+`reqwest` pulls in through `idna` declare `rust-version = 1.88`. On 1.85 cargo
+refuses to even parse `cpufeatures`' manifest (`edition2024` required), and on
+1.88 `cargo build --locked --all-targets` and `cargo test --locked` both pass.
+`ci.yml`'s `MSRV 1.88` job is what keeps the claim honest.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Not affiliated with the Operately project; see
+[ATTRIBUTIONS.md](ATTRIBUTIONS.md).
+
+## Security
+
+Vulnerabilities go through private reporting, not a public issue — see
+[SECURITY.md](SECURITY.md). Releases are cosign-signed with SLSA provenance;
+how the release pipeline fits together is in [docs/SDLC.md](docs/SDLC.md).
+

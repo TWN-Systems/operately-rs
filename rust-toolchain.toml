@@ -1,0 +1,9 @@
+# Toolchain floor for CI and local development.
+#
+# MSRV is 1.88 (see `workspace.package.rust-version`); CI additionally tests
+# the pinned stable channel. `cargo fmt`/`clippy` components are declared so
+# `cargo fmt`/`cargo clippy` work from a bare `rustup` install.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

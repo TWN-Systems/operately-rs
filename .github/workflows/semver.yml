@@ -1,0 +1,65 @@
+name: Semver
+
+# `cargo-semver-checks` — the check that actually enforces SemVer on a library.
+#
+# BASELINE below must name the highest version already on crates.io. Until
+# operately-sdk 0.1.0 is published there is nothing to compare against, so this
+# workflow is a no-op by design rather than a false green: bump BASELINE in the
+# same PR that publishes the next minor.
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/semver.yml"
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semver:
+    name: cargo-semver-checks
+    runs-on: ubuntu-latest
+    env:
+      # Nothing published yet -> skip with a visible reason.
+      BASELINE: "0.1.0"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve the published baseline version
+        id: baseline
+        # jq, not inline python: a multi-line `python3 -c '...'` inside a YAML
+        # block scalar breaks the workflow file at the first unindented line.
+        # crates.io 403s curl's default User-Agent and 404s while the crate is
+        # unpublished — both mean "no baseline yet", not "the gate broke".
+        run: |
+          published=$(curl -fsSL \
+            -H 'User-Agent: operately-rs-ci (https://github.com/TWN-Systems/operately-rs)' \
+            "https://crates.io/api/v1/crates/operately-sdk" 2>/dev/null \
+            | jq -r '.crate.max_stable_version // empty' 2>/dev/null) || published=""
+          echo "crates.io baseline: ${published:-none}"
+          echo "published=${published:-none}" >> "$GITHUB_OUTPUT"
+
+      - name: Check semver compatibility
+        if: steps.baseline.outputs.published != 'none'
+        run: |
+          set -euo pipefail
+          cargo install --locked cargo-semver-checks --version 0.45.0
+          cargo semver-checks check-release \
+            --baseline-rev "v${BASELINE}" \
+            --current-rev HEAD \
+            --release-version "$(cargo metadata --no-deps --format-version 1 \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')" \
+            --all-features
+
+      - name: Report skipped
+        if: steps.baseline.outputs.published == 'none'
+        run: |
+          echo "operately-sdk has no published release yet — semver comparison skipped."
+          echo "This check starts counting once v${BASELINE} is on crates.io."

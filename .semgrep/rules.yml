@@ -1,0 +1,112 @@
+# Vendored Semgrep rules for operately-rs.
+#
+# Why vendored rather than `p/default`: a registry scan changes results without
+# a commit, which makes "CI was green yesterday" an unverifiable claim. These
+# rules are the project's own security policy, they run offline, and changing
+# them is a reviewable diff. Widen the net with `p/default` on the scheduled
+# workflow if we want a second opinion (docs/SDLC.md).
+#
+# Scope note: `src/generated.rs` is emitted by build.rs from Operately's
+# api-catalog.json and is not on disk, so there is nothing to scan there. All
+# rules below target hand-written code.
+
+rules:
+  # --- Credential handling -------------------------------------------------
+  # This SDK takes a bearer token. The one thing that must never happen is a
+  # token reaching source, a log, or a panic message.
+  - id: no-hardcoded-bearer-token
+    message: >-
+      A literal bearer token in source. Tokens come from the caller's
+      environment; a literal here is a committed credential.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: reqwest::header::HeaderValue::from_static("Bearer ...")
+          - pattern: reqwest::header::AUTHORIZATION
+
+  - id: no-token-in-panic-or-format
+    message: >-
+      A credential reaches a panic/format path. Formatting a token into a
+      user-visible string leaks it to whatever consumes the message.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: panic!("... {$TOKEN} ...")
+          - pattern: format!("... {$TOKEN} ...")
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: ^(token|secret|password|api_key|apikey|credential)$
+
+  # --- TLS -----------------------------------------------------------------
+  # reqwest with default features would pull OpenSSL. rustls-tls is the
+  # declared choice; this rule fires if someone re-adds a native-tls default.
+  - id: no-tls-verification-bypass
+    message: >-
+      TLS verification disabled. A client library that cannot verify its peer
+      turns every caller's token into an interception risk.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: $B.danger_accept_invalid_certs(true)
+          - pattern: $B.danger_accept_invalid_hostnames(true)
+          - pattern: reqwest::Certificate::from_pem(..)
+
+  # --- Unbounded input -----------------------------------------------------
+  # A response body is attacker-influenced when the deployment is hostile or
+  # MITM'd. `resp.text()` is bounded only by the server's good graces.
+  - id: no-unbounded-response-read
+    message: >-
+      Unbounded response read. Consider reqwest's streaming body with an
+      explicit size limit for any deployment you do not control.
+    severity: WARNING
+    languages: [rust]
+    pattern: $RESP.text().await
+
+  # --- Unsafe --------------------------------------------------------------
+  # The workspace sets `unsafe_code = "forbid"`; this is the SAST-side echo of
+  # that, so a future refactor cannot quietly open the door.
+  - id: no-unsafe-blocks
+    message: "unsafe is forbidden in this workspace (workspace.lints.rust.unsafe_code)."
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern: unsafe { ... }
+
+  # --- Panics in a client library -----------------------------------------
+  # Every fallible path in an SDK returns Result. A panic here is a DoS in the
+  # caller's process, reachable from a response body.
+  - id: no-unwrap-outside-tests
+    message: >-
+      unwrap()/expect() in library code. Return Error::Decode or Error::ApiRaw
+      instead; tests may unwrap.
+    severity: WARNING
+    languages: [rust]
+    paths:
+      include:
+        - "/crates/**/src/**"
+        - "/!crates/**/tests/**"
+    pattern-either:
+      - pattern: $X.unwrap()
+      - pattern: $X.expect(...)
+
+  # --- Desync / hygiene ----------------------------------------------------
+  - id: no-format-in-panic
+    message: >-
+      Inline format args in panic!. Build the message explicitly so it cannot
+      silently pick up a credential held in scope.
+    severity: INFO
+    languages: [rust]
+    patterns:
+      - pattern: panic!("... { ... } ...")
+
+  - id: command-injection-shape
+    message: "Process spawning in a library. This crate must never shell out."
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: std::process::Command::new(..)
+          - pattern: std::os::unix::process::CommandExt::exec(..)
