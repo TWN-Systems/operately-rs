@@ -1,0 +1,5 @@
+# Code ownership for the required code-owner review on the default-branch
+# ruleset. Two or more owners, and all humans: a bot owner would satisfy the
+# required code-owner review without any human judgement, and a single owner
+# could lock the repo out of merging their own change.
+*       @yokoszn @twn-lloyd

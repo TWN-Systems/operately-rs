@@ -1,2 +1,15 @@
 /target
-Cargo.lock
+# cargo-fuzz artifacts (the fuzz crate is its own workspace)
+fuzz/corpus
+fuzz/artifacts
+fuzz/coverage
+# The fuzz harness resolves its own deps; the lockfile that describes what
+# *ships* is the root one.
+fuzz/Cargo.lock
+
+# Local agent planning scratch, not part of the repository.
+.harness/
+
+# Cargo.lock IS tracked on purpose: CI runs `--locked`, and a pinned lockfile
+# is what makes `cargo audit` / `cargo deny` / the SBOM describe the exact
+# dependency set that ships. Do not re-add `Cargo.lock` here.

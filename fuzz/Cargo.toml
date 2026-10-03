@@ -1,0 +1,32 @@
+[package]
+name = "operately-sdk-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+operately-sdk = { path = "../crates/operately-sdk" }
+serde_json = "1"
+
+# The fuzz crate is its own workspace root so cargo never walks up into the SDK
+# workspace (and so `cargo test --workspace` does not try to build it).
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_response"
+path = "fuzz_targets/fuzz_response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_error_body"
+path = "fuzz_targets/fuzz_error_body.rs"
+test = false
+doc = false
+bench = false

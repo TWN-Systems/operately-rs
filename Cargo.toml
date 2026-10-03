@@ -5,6 +5,21 @@ members = ["crates/operately-sdk"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.81" # MSRV — kept in step with rust-toolchain.toml's floor
 license = "MIT"
 authors = ["TWN Systems"]
 repository = "https://github.com/TWN-Systems/operately-rs"
+homepage = "https://github.com/TWN-Systems/operately-rs"
+documentation = "https://docs.rs/operately-sdk"
+readme = "README.md"
+keywords = ["operately", "sdk", "client", "api", "rest"]
+categories = ["api-bindings", "web-programming::http-client"]
+exclude = ["/.github", "/fuzz", "/.harness"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# The generated module already carries a blanket allow (see src/lib.rs); the
+# workspace floor is what keeps hand-written code honest.
+all = { level = "deny", priority = -1 }

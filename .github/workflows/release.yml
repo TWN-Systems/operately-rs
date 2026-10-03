@@ -1,0 +1,106 @@
+name: Release
+
+# Triggered by the `v*` tag that release-plz pushes when its release PR merges.
+# Publishing is the release; the signed artifacts and provenance are what make
+# the Signed-Releases and Packaging scorecard checks close.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish to crates.io with signature and provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # cosign keyless OIDC + artifact attestations
+      attestations: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Check tag matches workspace version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml | head -n 1)
+          test "v${version}" = "${TAG_NAME}"
+
+      - name: Package the crate
+        run: cargo package -p operately-sdk --locked
+
+      - name: Resolve the packaged artifact
+        id: pkg
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          crate="target/package/operately-sdk-${TAG_NAME#v}.crate"
+          test -f "$crate"
+          echo "path=target/package/operately-sdk-${TAG_NAME#v}.crate" >> "$GITHUB_OUTPUT"
+          echo "name=operately-sdk-${TAG_NAME#v}.crate" >> "$GITHUB_OUTPUT"
+
+      # Sign before publishing, so the signature covers the exact bytes that
+      # land on crates.io.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.2
+
+      - name: Sign the crate (keyless sigstore)
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          crate="${{ steps.pkg.outputs.path }}"
+          cosign sign-blob --yes \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp \
+              "^https://github.com/TWN-Systems/operately-rs/\.github/workflows/release\.yml@refs/tags/${TAG_NAME//./\\.}$" \
+            --output-signature "${crate}.sig" \
+            --output-certificate "${crate}.cert" \
+            "$crate"
+
+      - name: Generate SLSA build provenance
+        id: attest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: ${{ steps.pkg.outputs.path }}
+
+      - name: Stage release assets
+        env:
+          BUNDLE_B64: ${{ steps.attest.outputs.bundle }}
+        run: |
+          set -euo pipefail
+          crate="${{ steps.pkg.outputs.path }}"
+          echo "$BUNDLE_B64" | base64 -d > "${crate}.intoto.jsonl"
+          (cd "$(dirname "$crate")" && sha256sum "$(basename "$crate")" > SHA256SUMS)
+          ls -l "$(dirname "$crate")"
+
+      - name: Publish to crates.io
+        run: cargo publish -p operately-sdk --locked
+        env:
+          # Trusted-publishing OIDC is preferred; this long-lived token is the
+          # fallback and is scoped to publish-only for this crate.
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Attach assets to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          crate="${{ steps.pkg.outputs.path }}"
+          gh release create "$TAG_NAME" \
+            "$crate" \
+            "${crate}.sig" \
+            "${crate}.cert" \
+            "${crate}.intoto.jsonl" \
+            "$(dirname "$crate")/SHA256SUMS" \
+            --title "operately-sdk ${TAG_NAME#v}" \
+            --generate-notes

@@ -1,0 +1,99 @@
+name: CI
+
+# Gate for every change. `Rust checks` is the status check the default-branch
+# ruleset requires — renaming it means editing the ruleset too.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      # rust-toolchain.toml pins the channel, so no third-party toolchain action
+      # is needed here — one less thing to keep pinned.
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Build
+        run: cargo build --locked --all-targets
+      - name: Test
+        run: cargo test --locked
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Docs build without warnings
+        run: cargo doc --locked --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  msrv:
+    name: MSRV 1.81
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Install MSRV toolchain
+        run: rustup toolchain install 1.81 --profile minimal
+      - name: Build on MSRV
+        run: cargo +1.81 build --locked --all-targets
+      - name: Test on MSRV
+        run: cargo +1.81 test --locked
+
+  # The build.rs code generator is the one piece of this crate that reads a
+  # vendored third-party artifact (Operately's api-catalog.json). A panic or a
+  # hang there breaks every downstream build, so it gets its own test pass.
+  generator:
+    name: Generator regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      # Determinism: the generator must emit byte-identical output for the same
+      # catalog on every run, otherwise two builds of the same commit differ.
+      - name: Generate from the vendored catalog
+        run: |
+          set -euo pipefail
+          first=$(find "${CARGO_TARGET_DIR:-target}" -name generated.rs -path '*operately-sdk*' -print -quit)
+          test -n "$first"
+          sha_a=$(sha256sum "$first" | cut -d' ' -f1)
+          cargo clean -p operately-sdk
+          cargo build --locked -p operately-sdk
+          second=$(find "${CARGO_TARGET_DIR:-target}" -name generated.rs -path '*operately-sdk*' -print -quit)
+          sha_b=$(sha256sum "$second" | cut -d' ' -f1)
+          echo "run 1: $sha_a"
+          echo "run 2: $sha_b"
+          test "$sha_a" = "$sha_b"
+
+  semgrep:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-latest
+    # Only the vendored rules in `.semgrep/` run here, so the scan is
+    # deterministic and offline. Registry rules (`p/default`) can be added on a
+    # scheduled job if we want a wider net — see docs/SDLC.md.
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1.130.0
+        with:
+          config: .semgrep
+          # ERROR blocks the merge; WARNING/INFO are reported and tracked in
+          # docs/SDLC.md rather than silently ignored. `no-unbounded-response-read`
+          # is currently a WARNING on purpose — the fix is a behaviour change,
+          # tracked, not waved through by a rule nobody reads.
+          fail-on: error
