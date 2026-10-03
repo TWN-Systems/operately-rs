@@ -169,7 +169,14 @@ fn resolve_named(name: &str, names: &TypeNames) -> String {
         "boolean" => return "bool".to_string(),
         "integer" => return "i64".to_string(),
         "float" => return "f64".to_string(),
-        "date" | "datetime" | "contextual_date" | "timeframe" => return "String".to_string(),
+        "date" | "datetime" => return "String".to_string(),
+        // Confirmed against a real response (GET /projects/list): `timeframe` is
+        // `{contextual_start_date: {value, date, date_type}, contextual_end_date: {...}, ...}`,
+        // and `contextual_date` is that nested `{value, date, date_type}` shape itself — neither
+        // is a plain string despite the catalog naming them alongside "date"/"datetime". Not in
+        // the catalog's own `types.objects` map either, so there's no declared field list to
+        // generate a real struct from — raw JSON, same reasoning as the union types above.
+        "contextual_date" | "timeframe" => return "serde_json::Value".to_string(),
         _ => {}
     }
     if names.enums.contains_key(name) {
