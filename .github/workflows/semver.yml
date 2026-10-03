@@ -34,22 +34,17 @@ jobs:
 
       - name: Resolve the published baseline version
         id: baseline
+        # jq, not inline python: a multi-line `python3 -c '...'` inside a YAML
+        # block scalar breaks the workflow file at the first unindented line.
+        # crates.io 403s curl's default User-Agent and 404s while the crate is
+        # unpublished — both mean "no baseline yet", not "the gate broke".
         run: |
-          set -uo pipefail
-          # crates.io 403s a default curl User-Agent, and 404s while the crate
-          # is unpublished — both mean "no baseline yet", not "the gate broke".
           published=$(curl -fsSL \
             -H 'User-Agent: operately-rs-ci (https://github.com/TWN-Systems/operately-rs)' \
             "https://crates.io/api/v1/crates/operately-sdk" 2>/dev/null \
-            | python3 -c 'import json,sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print("")
-    raise SystemExit(0)
-print(d.get("crate", {}).get("max_stable_version") or "")' 2>/dev/null)
-          echo "published=${published:-none}" >> "$GITHUB_OUTPUT"
+            | jq -r '.crate.max_stable_version // empty' 2>/dev/null) || published=""
           echo "crates.io baseline: ${published:-none}"
+          echo "published=${published:-none}" >> "$GITHUB_OUTPUT"
 
       - name: Check semver compatibility
         if: steps.baseline.outputs.published != 'none'
